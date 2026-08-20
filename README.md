@@ -20,12 +20,26 @@ This project investigates whether the **audio content** of TikTok videos watched
 
 ---
 
+## Findings (Pilot, N=150 bursts / 120 participants)
+
+The notebook is parameterized to evaluate one outcome at a time; the saved run below is for `happy`. Out-of-fold predictions via Leave-One-Group-Out CV (grouped by participant, 120 folds):
+
+| Model | Features | R² (OOF) | RMSE (OOF) |
+|-------|----------|----------|------------|
+| A: Behavioral | 42 | −0.133 | 29.81 |
+| B: Behavioral + handcrafted audio | 306 | −0.077 | 29.06 |
+| C: Behavioral + handcrafted audio + AST (PCA-30) | 336 | −0.079 | 29.08 |
+
+**Bottom line:** none of the three models beat a mean-outcome baseline (all R² < 0) at this pilot scale — expected with ~150 noisy bursts and 300+ correlated predictors. Adding handcrafted audio features modestly reduced RMSE relative to behavioral counts alone; the AST deep embeddings added no further improvement over handcrafted audio (B and C are effectively tied). Read this as "audio content is not yet ruled out as a predictor," not as a positive result — the other three outcomes haven't been run yet, and a larger sample is needed before drawing real conclusions.
+
+---
+
 ## Pipeline Overview
 
 ```
 DDP logs (ddp_table_ema_120.csv, ddp_view_url_120.csv)   [not included, see data/README.md]
     │
-    ├─ pilot_sample.py          → pilot_sample_events.csv   (20 bursts, ≤3 URLs each)
+    ├─ pilot_sample.py          → pilot_sample_events.csv   (150 bursts, ≤5 URLs each)
     │
     ├─ download_videos.py       → videos/                   (yt-dlp download)
     │
@@ -49,7 +63,7 @@ DDP logs (ddp_table_ema_120.csv, ddp_view_url_120.csv)   [not included, see data
 
 | File | Description |
 |------|-------------|
-| `pilot_sample.py` | Samples 20 EMA bursts (one per participant where possible), selects up to 3 TikTok URLs per burst. Anchors sampling on EMA file to guarantee join coverage. |
+| `pilot_sample.py` | Samples 150 EMA bursts (one per participant first, then top-up), selects up to 5 TikTok URLs per burst. Anchors sampling on EMA file to guarantee join coverage. |
 | `download_videos.py` | Downloads sampled TikTok videos via `yt-dlp` into `videos/`. |
 | `section5.1/audio_feature_extraction.py` | Extracts handcrafted audio features per video using Librosa (MFCCs, chroma, spectral features, tempo, beat count, non-silence ratio). |
 | `embeddingvector.py` | Runs each video through a pretrained Audio Spectrogram Transformer (AudioSet-pretrained) and extracts a 768-dim embedding from the pre-classification layer. |
@@ -92,17 +106,17 @@ The [Audio Spectrogram Transformer](https://github.com/YuanGongND/ast) (pretrain
 
 ## Models
 
-Three Ridge regression models are compared using leave-one-out cross-validation (N=20):
+Three Ridge regression models are compared using Leave-One-Group-Out cross-validation, grouped by participant (N=150 bursts across 120 participants):
 
 | Model | Features | Count |
 |-------|----------|-------|
-| A | Behavioral (DDP counts) | 51 |
-| B | Behavioral + handcrafted audio | 315 |
-| C | Behavioral + handcrafted audio + AST (PCA-10) | 325 |
+| A | Behavioral (DDP counts) | 42 |
+| B | Behavioral + handcrafted audio | 306 |
+| C | Behavioral + handcrafted audio + AST (PCA-30) | 336 |
 
 Preprocessing: mean imputation → StandardScaler → RidgeCV (α ∈ {0.01, 0.1, 1, 10, 100, 1000}).
 
-> **Note:** This is a pilot run (N=20 bursts). R² estimates have high variance at this sample size and should be treated as directional only.
+> **Note:** This is a pilot run (N=150 bursts, 120 participants). R² estimates have high variance at this sample size and should be treated as directional only — see "Findings" above.
 
 Result plots (`coefficients_model_A.png`, `coefficients_model_B.png`, `model_comparison.png`, `pca_explained_variance.png`, `predicted_vs_actual.png`) are aggregate model outputs and are included.
 

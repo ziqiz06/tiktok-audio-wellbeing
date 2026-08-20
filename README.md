@@ -12,11 +12,11 @@ This project investigates whether the **audio content** of TikTok videos watched
 2. Do handcrafted audio features add signal beyond behavioral counts?
 3. Do deep audio embeddings (AST) add signal beyond both?
 
-**Outcomes modeled:**
-- `happy` — momentary happiness (0–100 VAS)
-- `smu_intention_pc` — social media use intention (person-centered)
-- `smu_experience_happy` — happiness during social media use
-- `life_satisfied` — life satisfaction (0–100 VAS)
+**Outcome variables available in the data:**
+- `happy` — momentary happiness (0–100 VAS) — **the only outcome evaluated so far; see Findings below**
+- `smu_intention_pc` — social media use intention (person-centered) — defined, not yet modeled
+- `smu_experience_happy` — happiness during social media use — defined, not yet modeled
+- `life_satisfied` — life satisfaction (0–100 VAS) — defined, not yet modeled
 
 ---
 
@@ -69,7 +69,7 @@ DDP logs (ddp_table_ema_120.csv, ddp_view_url_120.csv)   [not included, see data
 | `embeddingvector.py` | Runs each video through a pretrained Audio Spectrogram Transformer (AudioSet-pretrained) and extracts a 768-dim embedding from the pre-classification layer. |
 | `build_features.py` | Joins Librosa and AST features into `video_features.csv`; merges onto pilot events to produce `events_with_features.csv`. |
 | `build_final_model_df.py` | Aggregates video-level features to the burst level (mean + std across sampled videos), then merges with behavioral counts and EMA outcomes into `final_model_df.csv`. |
-| `ridge_model.ipynb` | Fits and evaluates three Ridge regression models using leave-one-out CV. Produces comparison plots and coefficient visualizations. |
+| `ridge_model.ipynb` | Fits and evaluates three Ridge regression models using Leave-One-Group-Out CV, grouped by participant. Produces comparison plots and coefficient visualizations. |
 
 ---
 
@@ -98,7 +98,7 @@ See `section5.1/audio_feature.md` for full documentation.
 
 ### Deep Embeddings (AST)
 
-The [Audio Spectrogram Transformer](https://github.com/YuanGongND/ast) (pretrained on AudioSet) produces a 768-dim embedding per video, extracted via a forward hook on the pre-classification layer. Embeddings are averaged across sampled videos within a burst, then reduced with PCA (n=10) before modeling.
+The [Audio Spectrogram Transformer](https://github.com/YuanGongND/ast) (pretrained on AudioSet) produces a 768-dim embedding per video, extracted via a forward hook on the pre-classification layer. Embeddings are averaged across sampled videos within a burst, then reduced with PCA (n=30) before modeling.
 
 `third_party/ast/` vendors just the `ASTModel` class needed for this (BSD-3-Clause) — not the full upstream repo. See `third_party/ast/README.md`.
 
@@ -136,7 +136,7 @@ Raw and per-participant files are **not included** — see `data/README.md` for 
 | `video_features.csv` | Joined Librosa + AST features per video URL |
 | `events_with_features.csv` | Pilot events with all video-level features attached |
 | `session_features.csv` | Burst-level feature aggregates |
-| `final_model_df.csv` | Final modeling dataset (20 rows × ~2055 columns) |
+| `final_model_df.csv` | Final modeling dataset (150 rows × 2055 columns) |
 
 ---
 

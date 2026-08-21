@@ -26,11 +26,9 @@ beyond the baseline"):
      happened by chance; a large one means it's indistinguishable from
      shuffling the audio/AST features randomly.
 
-IMPORTANT: this script duplicates the feature-grouping and pipeline logic
-from ridge_model.ipynb (AUDIO_PCA, N_PCA, column-pattern matching) rather
-than importing it, since the notebook isn't meant to be imported as a
-module. If you change feature grouping or PCA settings in the notebook,
-mirror the change here too.
+Pipeline-building logic (including outlier winsorizing, added after a real
+bug at N=736 -- see modeling_utils.py) lives in modeling_utils.py, shared
+with run_ridge_models.py.
 
 Runtime: each permutation refits the extended model across every LOGO fold
 (one fit per participant). At N~150 this is seconds per permutation; at the
@@ -44,50 +42,10 @@ import warnings
 
 import numpy as np
 import pandas as pd
-from sklearn.compose import ColumnTransformer
-from sklearn.decomposition import PCA
-from sklearn.impute import SimpleImputer
-from sklearn.linear_model import RidgeCV
 from sklearn.metrics import r2_score
 from sklearn.model_selection import LeaveOneGroupOut, cross_val_predict
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
 
-AUDIO_PCA = 10   # must match ridge_model.ipynb
-N_PCA = 30       # must match ridge_model.ipynb (AST block)
-ALPHAS = [0.01, 0.1, 1.0, 10.0, 100.0, 1000.0]
-
-
-def make_block_pipeline(cols, n_pca, n_samples):
-    steps = [("impute", SimpleImputer(strategy="mean")), ("scale", StandardScaler())]
-    if n_pca is not None:
-        safe_n = min(n_pca, len(cols), n_samples - 1)
-        steps.append(("pca", PCA(n_components=safe_n)))
-    return Pipeline(steps)
-
-
-def make_pipeline(blocks, n_samples):
-    ct = ColumnTransformer([
-        (name, make_block_pipeline(cols, n_pca, n_samples), cols)
-        for name, cols, n_pca in blocks
-    ])
-    return Pipeline([("preprocess", ct), ("ridge", RidgeCV(alphas=ALPHAS, scoring="r2"))])
-
-
-def group_features(df, target):
-    exclude = {"PID", "Start Date", target, "pilot_n_videos_sampled", "pilot_n_videos_with_features"}
-    all_cols = set(df.columns) - exclude
-
-    behav_cols = sorted([c for c in all_cols if any(c.startswith(p) or p in c for p in ["ddp_", "app_Browser"])])
-    ast_cols = sorted([c for c in all_cols if c.startswith("ast_") and c.endswith("_mean")])
-    audio_patterns = ["mfcc", "chroma", "tempo", "rms_", "zcr_", "tonnetz",
-                       "centroid", "rolloff", "bandwidth", "contrast", "beat_count", "non_silence"]
-    audio_cols = sorted([c for c in all_cols if any(p in c for p in audio_patterns) and not c.startswith("ast_")])
-
-    def keep_numeric(cols):
-        return [c for c in cols if pd.api.types.is_numeric_dtype(df[c])]
-
-    return keep_numeric(behav_cols), keep_numeric(audio_cols), keep_numeric(ast_cols)
+from modeling_utils import AUDIO_PCA, N_PCA, group_features, make_pipeline
 
 
 def fit_oof_r2(pipe, X, y, groups):
@@ -111,14 +69,12 @@ def run_permutation_test(df, target, comparison, n_permutations, seed=42):
         new_cols = audio_cols
         new_block_name = "audio"
         new_n_pca = AUDIO_PCA
-        extra_blocks = []  # nothing else added
     elif comparison == "BC":
         baseline_blocks = [("behav", behav_cols, None), ("audio", audio_cols, AUDIO_PCA)]
         baseline_cols = behav_cols + audio_cols
         new_cols = ast_cols
         new_block_name = "ast"
         new_n_pca = N_PCA
-        extra_blocks = []
     else:
         raise ValueError("comparison must be 'AB' or 'BC'")
 

@@ -11,10 +11,9 @@ plots/coefficient-inspection parts of the notebook are still notebook-only --
 this script is for getting real numbers unattended, not for reproducing
 every visualization.
 
-Duplicates feature-grouping/pipeline logic from ridge_model.ipynb and
-permutation_test.py rather than importing either (neither is meant to be
-imported as a module). Keep AUDIO_PCA/N_PCA in sync across all three if you
-change them.
+Pipeline-building logic lives in modeling_utils.py, shared with
+permutation_test.py, so a fix (like the outlier winsorizing added after a
+real bug at N=736) only needs to happen in one place.
 """
 import argparse
 import json
@@ -23,51 +22,12 @@ import warnings
 
 import numpy as np
 import pandas as pd
-from sklearn.compose import ColumnTransformer
-from sklearn.decomposition import PCA
-from sklearn.impute import SimpleImputer
-from sklearn.linear_model import RidgeCV
 from sklearn.metrics import r2_score, root_mean_squared_error
 from sklearn.model_selection import LeaveOneGroupOut, cross_val_predict
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
 
-AUDIO_PCA = 10   # must match ridge_model.ipynb / permutation_test.py
-N_PCA = 30       # must match ridge_model.ipynb / permutation_test.py
-ALPHAS = [0.01, 0.1, 1.0, 10.0, 100.0, 1000.0]
+from modeling_utils import AUDIO_PCA, N_PCA, group_features, make_pipeline
+
 OUTCOMES = ["happy", "smu_intention_pc", "smu_experience_happy", "life_satisfied"]
-
-
-def make_block_pipeline(cols, n_pca, n_samples):
-    steps = [("impute", SimpleImputer(strategy="mean")), ("scale", StandardScaler())]
-    if n_pca is not None:
-        safe_n = min(n_pca, len(cols), n_samples - 1)
-        steps.append(("pca", PCA(n_components=safe_n)))
-    return Pipeline(steps)
-
-
-def make_pipeline(blocks, n_samples):
-    ct = ColumnTransformer([
-        (name, make_block_pipeline(cols, n_pca, n_samples), cols)
-        for name, cols, n_pca in blocks
-    ])
-    return Pipeline([("preprocess", ct), ("ridge", RidgeCV(alphas=ALPHAS, scoring="r2"))])
-
-
-def group_features(df, target):
-    exclude = {"PID", "Start Date", target, "pilot_n_videos_sampled", "pilot_n_videos_with_features"}
-    all_cols = set(df.columns) - exclude
-
-    behav_cols = sorted([c for c in all_cols if any(c.startswith(p) or p in c for p in ["ddp_", "app_Browser"])])
-    ast_cols = sorted([c for c in all_cols if c.startswith("ast_") and c.endswith("_mean")])
-    audio_patterns = ["mfcc", "chroma", "tempo", "rms_", "zcr_", "tonnetz",
-                       "centroid", "rolloff", "bandwidth", "contrast", "beat_count", "non_silence"]
-    audio_cols = sorted([c for c in all_cols if any(p in c for p in audio_patterns) and not c.startswith("ast_")])
-
-    def keep_numeric(cols):
-        return [c for c in cols if pd.api.types.is_numeric_dtype(df[c])]
-
-    return keep_numeric(behav_cols), keep_numeric(audio_cols), keep_numeric(ast_cols)
 
 
 def evaluate(pipe, X, y, groups):

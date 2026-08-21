@@ -12,27 +12,35 @@ This project investigates whether the **audio content** of TikTok videos watched
 2. Do handcrafted audio features add signal beyond behavioral counts?
 3. Do deep audio embeddings (AST) add signal beyond both?
 
-**Outcome variables available in the data:**
-- `happy` — momentary happiness (0–100 VAS) — **the only outcome evaluated so far; see Findings below**
-- `smu_intention_pc` — social media use intention (person-centered) — defined, not yet modeled
-- `smu_experience_happy` — happiness during social media use — defined, not yet modeled
-- `life_satisfied` — life satisfaction (0–100 VAS) — defined, not yet modeled
+**Outcome variables:**
+- `happy` — momentary happiness (0–100 VAS)
+- `smu_intention_pc` — social media use intention (person-centered)
+- `smu_experience_happy` — happiness during social media use
+- `life_satisfied` — life satisfaction (0–100 VAS)
 
 ---
 
-## Findings (Provisional — N=150 bursts / 120 participants)
+## Findings (N=736 bursts / 120 participants — full target scale)
 
-> These numbers are from the **old 150-burst pilot**, re-run only to confirm the updated pipeline (PCA-reduced audio block, see "Sample-Size Planning" below) still works correctly — they are not the target-scale run. `power_analysis.py` shows 0% power at N=150 to detect even a small effect, so don't read anything into the ranking between B and C below; it will very likely change once the pipeline is actually re-run at the ~736–794-burst scale the data supports.
+Out-of-fold R²/RMSE via Leave-One-Group-Out CV (grouped by participant, 120 folds), all four outcomes:
 
-The notebook is parameterized to evaluate one outcome at a time; the run below is for `happy`. Out-of-fold predictions via Leave-One-Group-Out CV (grouped by participant, 120 folds):
+| Outcome | A: Behavioral | B: +handcrafted audio (PCA-10) | C: +AST (PCA-30) |
+|---|---|---|---|
+| `happy` | R²=−0.311, RMSE=33.32 | R²=−0.341, RMSE=33.69 | R²=−0.356, RMSE=33.88 |
+| `smu_intention_pc` | R²=−0.013, RMSE=0.78 | R²=−0.027, RMSE=0.78 | R²=−0.035, RMSE=0.79 |
+| `smu_experience_happy` | R²=−0.283, RMSE=1.20 | R²=−0.298, RMSE=1.20 | R²=−0.321, RMSE=1.21 |
+| `life_satisfied` | R²=−0.483, RMSE=36.00 | R²=−0.517, RMSE=36.41 | R²=−0.564, RMSE=36.97 |
 
-| Model | Features (post-PCA) | R² (OOF) | RMSE (OOF) |
-|-------|----------|----------|------------|
-| A: Behavioral | 42 | −0.133 | 29.81 |
-| B: Behavioral + handcrafted audio (PCA-10) | 52 | −0.074 | 29.02 |
-| C: Behavioral + handcrafted audio (PCA-10) + AST (PCA-30) | 82 | −0.101 | 29.39 |
+**Permutation test** (`permutation_test.py`, target=`happy`, 100 permutations per comparison — tests whether the R² change from adding a feature block is distinguishable from randomly shuffling that block against the outcome):
 
-**Bottom line:** none of the three models beat a mean-outcome baseline (all R² < 0) — expected, given 0% power at this N. This table exists to prove the pipeline runs end-to-end after the audio-PCA change, not to draw a conclusion about whether audio content predicts well-being. That question needs the larger-N rerun described below.
+| Comparison | Observed ΔR² | p-value | Verdict |
+|---|---|---|---|
+| A→B (adding handcrafted audio) | −0.030 | 0.92 | not significant |
+| B→C (adding AST embeddings) | −0.014 | 0.42 | not significant |
+
+**Bottom line: this is a genuine null result, not an inconclusive one.** All models underperform a mean-outcome baseline (R² < 0 throughout), both feature additions made predictions slightly *worse* rather than better, and the permutation test rules out "the small negative change is actually a small positive effect obscured by noise" (p is nowhere close to 0.05 in either direction). Per `power_analysis.py`, this design had ~75% power to detect even a small real effect at this N — so a real small-to-medium effect on `happy` would likely have shown up. At this sample size, audio content — neither handcrafted features nor AST deep embeddings — adds detectable predictive signal for momentary well-being beyond behavioral counts alone. The permutation test has only been run for `happy`; the other three outcomes have R²/RMSE above but not yet a significance test.
+
+One methodological note worth carrying into any write-up: the first full-scale run produced nonsensical results (R² as low as −47) traced to a single participant with a ~46-SD outlier value on one behavioral feature, which a linear model extrapolated catastrophically on. Fixed by winsorizing each feature to its training-fold 5th/95th percentile before scaling (see `modeling_utils.py`) — a reminder that scaling up a pilot can surface data-quality issues invisible at N=150.
 
 ---
 
@@ -72,7 +80,11 @@ DDP logs (ddp_table_ema_120.csv, ddp_view_url_120.csv)   [not included, see data
 | `embeddingvector.py` | Runs each video through a pretrained Audio Spectrogram Transformer (AudioSet-pretrained) and extracts a 768-dim embedding from the pre-classification layer. |
 | `build_features.py` | Joins Librosa and AST features into `video_features.csv`; merges onto pilot events to produce `events_with_features.csv`. |
 | `build_final_model_df.py` | Aggregates video-level features to the burst level (mean + std across sampled videos), then merges with behavioral counts and EMA outcomes into `final_model_df.csv`. |
-| `ridge_model.ipynb` | Fits and evaluates three Ridge regression models using Leave-One-Group-Out CV, grouped by participant. Produces comparison plots and coefficient visualizations. |
+| `modeling_utils.py` | Shared model-building logic (feature grouping, PCA pipeline, outlier winsorizing) used by both `run_ridge_models.py` and `permutation_test.py`, so a fix only has to happen once. `ridge_model.ipynb` intentionally keeps its own inline copy — see its Section 6 — since it's meant to be read standalone rather than import a project module. |
+| `ridge_model.ipynb` | Fits and evaluates three Ridge regression models using Leave-One-Group-Out CV, grouped by participant, for the `happy` outcome (see Section 12 for switching outcomes). Produces comparison plots and coefficient visualizations. |
+| `run_ridge_models.py` | Non-interactive version of the notebook's modeling step, covering all four outcomes in one run — writes `ridge_results.json`. Used for the unattended pipeline run in `run_pipeline.sh`. |
+| `permutation_test.py` | Tests whether an observed R² change from adding a feature block is distinguishable from chance, via shuffling and refitting under the same CV. The piece `power_analysis.py` doesn't cover. |
+| `run_pipeline.sh` | Runs the full pipeline unattended (e.g. overnight) — pre-flight download check, per-step logging to `logs/`, status to `PIPELINE_STATUS.txt`. |
 
 ---
 
@@ -139,6 +151,8 @@ Even with both changes, this reaches ~75% power for a *small* effect at the full
 
 `power_analysis.py` is meant to be re-run whenever the candidate burst pool changes (e.g. if the lab collects more DDP data) — it's the way to check the target N before investing in another full pipeline rerun, rather than rerunning and hoping.
 
+**Update: this rerun has been done.** The pipeline was actually re-run at full scale (736 bursts, 120 participants — the download step landed slightly below the 794 ceiling due to normal content attrition on ~1-year-old videos, not a shortfall in the sampling). See "Findings" above for the result: a genuine null finding, not an underpowered one, thanks to this planning.
+
 ---
 
 ## Data Files
@@ -155,7 +169,7 @@ Raw and per-participant files are **not included** — see `data/README.md` for 
 | `video_features.csv` | Joined Librosa + AST features per video URL |
 | `events_with_features.csv` | Pilot events with all video-level features attached |
 | `session_features.csv` | Burst-level feature aggregates |
-| `final_model_df.csv` | Final modeling dataset (150 rows × 2055 columns) |
+| `final_model_df.csv` | Final modeling dataset (736 rows × 2055 columns) |
 
 ---
 
@@ -203,4 +217,9 @@ python build_final_model_df.py
 
 # 7. Run models
 jupyter notebook ridge_model.ipynb
+
+# 8. (optional) Test whether an R² improvement is real or chance
+python permutation_test.py --comparison both --n-permutations 200
 ```
+
+Or run the whole thing unattended (steps 1–7, plus a permutation test) via `bash run_pipeline.sh` — see its header comment for usage with `caffeinate`/`nohup` for an overnight run.

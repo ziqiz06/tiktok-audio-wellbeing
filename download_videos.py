@@ -30,6 +30,25 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 import yt_dlp
 
+# Without browser impersonation, TikTok's bot detection rejects most requests
+# with a misleading "Your IP address is blocked" error -- confirmed by direct
+# testing: the identical URL failed without this and succeeded with it, on
+# the same network, same run. Requires the curl_cffi package. yt-dlp's own
+# CLI accepts a plain string ("chrome"), but the Python API used here needs
+# an actual ImpersonateTarget object -- passing a string crashes with an
+# AssertionError deep in yt-dlp's internals, so this is constructed once and
+# reused rather than left as a string in ydl_opts, and falls back to no
+# impersonation (with a warning) if curl_cffi isn't installed at all, rather
+# than crashing every single download.
+try:
+    from yt_dlp.networking.impersonate import ImpersonateTarget
+    IMPERSONATE_TARGET = ImpersonateTarget.from_str("chrome")
+except Exception as e:
+    print(f"WARNING: could not set up browser impersonation ({e}). "
+          f"Downloads will likely fail with 'IP address is blocked' errors. "
+          f"Fix: pip install -U \"yt-dlp[default]\" curl_cffi")
+    IMPERSONATE_TARGET = None
+
 MAX_WORKERS = 6
 
 base       = os.path.dirname(os.path.abspath(__file__))
@@ -59,6 +78,8 @@ def download_video(url):
         "outtmpl": os.path.join(videos_dir, "%(id)s.%(ext)s"),
         "format": "bestvideo+bestaudio/best",
     }
+    if IMPERSONATE_TARGET is not None:
+        ydl_opts["impersonate"] = IMPERSONATE_TARGET
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
             info = ydl.extract_info(url, download=True)

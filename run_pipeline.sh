@@ -59,7 +59,7 @@ echo "Using interpreter: $VENV_PYTHON ($($VENV_PYTHON --version 2>&1))"
 # interpreter, instead of discovering it three layers deep in a misleading
 # "download failed" log at 3am.
 echo "--- Checking dependencies ---"
-if ! "$VENV_PYTHON" -c "import pandas, numpy, sklearn, torch, torchaudio, librosa, soundfile, yt_dlp" 2> logs/dependency_check.log; then
+if ! "$VENV_PYTHON" -c "import pandas, numpy, sklearn, torch, torchaudio, librosa, soundfile, yt_dlp, curl_cffi" 2> logs/dependency_check.log; then
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] ABORTED: missing dependencies under $VENV_PYTHON. See logs/dependency_check.log" >> "$STATUS_FILE"
     echo "ABORTING: $VENV_PYTHON is missing required packages -- see logs/dependency_check.log"
     cat logs/dependency_check.log

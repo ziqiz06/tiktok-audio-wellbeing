@@ -166,9 +166,11 @@ python >= 3.9
 pandas, numpy, scikit-learn
 librosa
 torch, torchaudio, soundfile
-yt-dlp
+yt-dlp (recent version) + curl_cffi
 ffmpeg  (system install, used by embeddingvector.py)
 ```
+
+> **`curl_cffi` is required, not optional**, despite not being imported directly anywhere in this repo's code. Without it, `yt-dlp` can't impersonate a real browser's TLS fingerprint, and TikTok's bot detection rejects most download requests with a misleading `"Your IP address is blocked from accessing this post"` error — which looks exactly like a real network-level block but isn't one. Confirmed by direct testing: the identical URL, on the identical network, failed without `curl_cffi` installed and succeeded with it. Install both together: `pip install -U "yt-dlp[default]" curl_cffi`.
 
 The AST model weights (AudioSet pretrained) must be placed in `third_party/ast/pretrained_models/` — see `third_party/ast/pretrained_models/README.md` (downloaded automatically on first run if missing).
 

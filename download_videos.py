@@ -98,10 +98,29 @@ def log_failure(url, error):
         writer.writerow([datetime.datetime.now(datetime.timezone.utc).isoformat(), url, error])
 
 
+def previously_failed_urls():
+    """URLs already logged as failed in a prior run. Without this, every run
+    (including --limit smoke tests) re-attempts the exact same leftover pool
+    of already-failed URLs forever, since only successes are tracked via
+    already_downloaded_ids() -- and that leftover pool skews heavily toward
+    genuinely-unavailable content (deleted/removed/restricted), so its
+    failure rate is nowhere near representative of whether the pipeline
+    actually works. Confirmed in practice: a pre-flight sample drawn from
+    this leftover pool read as 0/25 while a random already-succeeded video
+    downloaded fine seconds later -- the tool was never broken, the sample
+    was just drawn from the wrong subpopulation."""
+    if not os.path.exists(failures_path):
+        return set()
+    with open(failures_path) as f:
+        return {row["url"] for row in csv.DictReader(f)}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=None,
                          help="Max NEW videos to attempt this run (for a smoke test before the full batch).")
+    parser.add_argument("--retry-failures", action="store_true",
+                         help="Also retry URLs that failed in a previous run (skipped by default).")
     args = parser.parse_args()
 
     pilot = pd.read_csv(os.path.join(base, "pilot_sample_events.csv"))
@@ -109,8 +128,19 @@ def main():
 
     done_ids = already_downloaded_ids(videos_dir)
     to_download = [u for u in unique_urls if video_id_from_url(u) not in done_ids]
-    skipped = len(unique_urls) - len(to_download)
-    print(f"{len(unique_urls)} unique URLs total, {skipped} already downloaded, {len(to_download)} remaining")
+    skipped_done = len(unique_urls) - len(to_download)
+
+    if not args.retry_failures:
+        failed_before = previously_failed_urls()
+        before_failure_filter = len(to_download)
+        to_download = [u for u in to_download if u not in failed_before]
+        skipped_failed = before_failure_filter - len(to_download)
+    else:
+        skipped_failed = 0
+
+    print(f"{len(unique_urls)} unique URLs total, {skipped_done} already downloaded, "
+          f"{skipped_failed} previously failed (skipped, use --retry-failures to include), "
+          f"{len(to_download)} remaining")
 
     if args.limit is not None:
         # Random sample, NOT the first N in file order: pilot_sample_events.csv

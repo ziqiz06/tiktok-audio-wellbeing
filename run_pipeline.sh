@@ -86,28 +86,56 @@ run_step() {
 }
 
 # ── Pre-flight: does downloading even work from this network? ────────────────
-echo "--- Pre-flight: testing download on 10 videos before committing to the full batch ---"
+# Sample size and threshold calibrated against a real measurement: a full
+# overnight run on this network genuinely succeeded ~77.5% of the time
+# (2297/2964), with most failures being real content attrition (~1-year-old
+# videos, since deleted/removed) rather than actual blocking. A 10-video
+# sample is too small against that noise floor -- it can occasionally read
+# as a near-total failure by chance alone even when nothing is wrong (this
+# happened: 0-1/10 succeeded on one run, then an already-succeeded video
+# downloaded fine again seconds later, proving the pipeline was never
+# actually broken). 25 videos, threshold >=10, keeps real margin below the
+# known ~77.5% baseline while still catching a genuine full block/crash.
+PREFLIGHT_N=25
+PREFLIGHT_MIN_OK=10
+echo "--- Pre-flight: testing download on $PREFLIGHT_N videos before committing to the full batch ---"
 preflight_log="logs/$(date +%Y%m%d_%H%M%S)_preflight_download.log"
-"$VENV_PYTHON" download_videos.py --limit 10 > "$preflight_log" 2>&1
+"$VENV_PYTHON" download_videos.py --limit "$PREFLIGHT_N" > "$preflight_log" 2>&1
 preflight_ok=$(grep -oE '^Done\. [0-9]+ succeeded' "$preflight_log" | grep -oE '[0-9]+' || echo 0)
-echo "Pre-flight: ${preflight_ok}/10 succeeded (log: $preflight_log)"
-if [ "$preflight_ok" -lt 3 ]; then
+
+if grep -q "^Nothing to do\.$" "$preflight_log"; then
+    # Nothing left to test isn't a failure -- it means download_videos.py has
+    # already exhausted the candidate pool (everything is either downloaded
+    # or already logged as a permanent failure from a prior run). Testing
+    # "does downloading work" is meaningless when there's nothing left to
+    # attempt; skip straight to the real run rather than reporting a false 0%.
+    echo "Pre-flight: nothing left to download (pool already exhausted) -- skipping gate, proceeding."
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] OK    preflight_download (skipped -- download pool already exhausted)" >> "$STATUS_FILE"
+elif [ "$preflight_ok" -ge "$PREFLIGHT_MIN_OK" ]; then
+    echo "Pre-flight: ${preflight_ok}/${PREFLIGHT_N} succeeded (log: $preflight_log)"
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] OK    preflight_download (${preflight_ok}/${PREFLIGHT_N} succeeded)" >> "$STATUS_FILE"
+else
     # Diagnose from the actual log instead of assuming a cause.
     if grep -qi "ModuleNotFoundError\|ImportError\|Traceback" "$preflight_log"; then
         reason="script crashed on startup (missing dependency/import error) -- this is NOT a network/IP issue, check $preflight_log for the traceback"
-    elif grep -qi "IP address is blocked" "$preflight_log"; then
-        reason="TikTok is rejecting requests from this network's IP -- check $preflight_log"
     elif grep -qi "impersonat" "$preflight_log"; then
         reason="yt-dlp is missing browser-impersonation support (curl_cffi) -- TikTok's bot detection may be rejecting requests because of this, not the network itself. Try: pip install -U \"yt-dlp[default]\" curl_cffi"
+    elif grep -qi "IP address is blocked" "$preflight_log"; then
+        # NOTE: this message is known to be misleading -- TikTok returns it for
+        # several different real causes (deleted/removed video, geo-restriction,
+        # genuine rate-limiting), not only actual IP blocks. At this sample size
+        # (25) hitting the threshold is a real signal either way, but don't
+        # assume it specifically means "blocked" -- check a few IDs in a browser
+        # if this keeps happening across repeated runs.
+        reason="most failures were 'IP address is blocked' -- this can mean a real block OR a batch of removed/unavailable videos (TikTok uses the same message for both). Check a few video IDs from $preflight_log in a browser before assuming it's a network problem."
     else
         reason="unclear -- read $preflight_log directly, don't assume network/IP blocking"
     fi
-    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] ABORTED after pre-flight: only ${preflight_ok}/10 downloads succeeded. Diagnosis: $reason" >> "$STATUS_FILE"
-    echo "ABORTING: pre-flight download success rate too low (${preflight_ok}/10, need >=3)."
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] ABORTED after pre-flight: only ${preflight_ok}/${PREFLIGHT_N} downloads succeeded. Diagnosis: $reason" >> "$STATUS_FILE"
+    echo "ABORTING: pre-flight download success rate too low (${preflight_ok}/${PREFLIGHT_N}, need >=${PREFLIGHT_MIN_OK})."
     echo "Diagnosis: $reason"
     exit 1
 fi
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] OK    preflight_download (${preflight_ok}/10 succeeded)" >> "$STATUS_FILE"
 
 # ── Full pipeline ──────────────────────────────────────────────────────────
 run_step "download_videos"          "$VENV_PYTHON" download_videos.py || exit 1

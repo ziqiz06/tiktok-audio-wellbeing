@@ -1,46 +1,30 @@
+"""
+Extracts handcrafted audio features per downloaded video using Librosa.
+
+CPU-bound (librosa doesn't use the GPU at all), so this parallelizes across
+processes, not threads -- unlike download_videos.py, which is network-bound
+and uses a thread pool instead. Each worker process gets its own SIGALRM
+timeout, same behavior as the original sequential version, just N-at-a-time.
+"""
+import os
 import signal
+from concurrent.futures import ProcessPoolExecutor, as_completed
+
 import librosa
 import numpy as np
 import pandas as pd
-import os
 
 TIMEOUT_SECONDS = 60  # max time per video before skipping
+MAX_WORKERS = max(1, (os.cpu_count() or 4) - 1)
 
 base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 videos_dir = os.path.join(base, "videos")
 out_path = os.path.join(base, "section5.1", "df_final.csv")
 
-# Build a map: video_id -> file path (skip .wav files)
-video_files = {
-    os.path.splitext(f)[0]: os.path.join(videos_dir, f)
-    for f in os.listdir(videos_dir)
-    if not f.endswith(".wav")
-}
 
-# Load pilot sample and filter to URLs that were actually downloaded
-pilot = pd.read_csv(os.path.join(base, "pilot_sample_events.csv"))
-pilot = pilot.dropna(subset=["url"])
-
-unique_videos = [
-    url for url in pilot["url"].unique()
-    if url.rstrip("/").split("/")[-1] in video_files
-]
-print(f"Found {len(unique_videos)} pilot URLs with downloaded video files")
-
-# ── Resume: skip URLs already in df_final.csv ────────────────────────────────
-already_done = set()
-if os.path.exists(out_path):
-    existing = pd.read_csv(out_path)
-    already_done = set(existing["url"].dropna().unique())
-    print(f"Resuming: {len(already_done)} URLs already processed, skipping them")
-
-unique_videos = [u for u in unique_videos if u not in already_done]
-print(f"Remaining: {len(unique_videos)} videos to process")
-
-
-# ── Timeout handler ───────────────────────────────────────────────────────────
 class TimeoutError(Exception):
     pass
+
 
 def _timeout_handler(signum, frame):
     raise TimeoutError()
@@ -60,15 +44,12 @@ def summarize_feature(x, prefix, features):
             features[f"{prefix}_{j+1}_volatility"] = np.nan
 
 
-feature_rows = []
-
-for i, url in enumerate(unique_videos):
-    video_id = url.rstrip("/").split("/")[-1]
-    file_path = video_files[video_id]
-    print(f"[{i+1}/{len(unique_videos)}] Processing: {url}")
-
+def extract_features(url, file_path, timeout_seconds=TIMEOUT_SECONDS):
+    """Runs in a worker process. Returns (url, features_dict_or_None, error_or_None)."""
+    # SIGALRM only works on the main thread of a process, but each worker
+    # process has its own main thread, so this is safe per-worker.
     signal.signal(signal.SIGALRM, _timeout_handler)
-    signal.alarm(TIMEOUT_SECONDS)
+    signal.alarm(timeout_seconds)
 
     try:
         y, sr = librosa.load(file_path, sr=22050)
@@ -111,27 +92,77 @@ for i, url in enumerate(unique_videos):
         summarize_feature(chroma,    "chroma",    features)
         summarize_feature(tonnetz,   "tonnetz",   features)
 
-        feature_rows.append(features)
-        print("  Success")
+        return url, features, None
 
     except TimeoutError:
         signal.alarm(0)
-        print(f"  Timed out after {TIMEOUT_SECONDS}s — skipping")
+        return url, None, f"timed out after {timeout_seconds}s"
     except Exception as e:
         signal.alarm(0)
-        print(f"  Feature extraction failed: {e}")
+        return url, None, str(e)
 
-features_df = pd.DataFrame(feature_rows)
 
-# Merge back with pilot event info
-df_new = pilot.merge(features_df, on="url", how="left")
+def main():
+    # Build a map: video_id -> file path (skip .wav files)
+    video_files = {
+        os.path.splitext(f)[0]: os.path.join(videos_dir, f)
+        for f in os.listdir(videos_dir)
+        if not f.endswith(".wav")
+    }
 
-# Append to any existing results
-if already_done:
-    existing = pd.read_csv(out_path)
-    df_final = pd.concat([existing, df_new], ignore_index=True)
-else:
-    df_final = df_new
+    # Load pilot sample and filter to URLs that were actually downloaded
+    pilot = pd.read_csv(os.path.join(base, "pilot_sample_events.csv"))
+    pilot = pilot.dropna(subset=["url"])
 
-df_final.to_csv(out_path, index=False)
-print(f"\nSaved {len(features_df)} new videos → section5.1/df_final.csv ({len(df_final)} total rows)")
+    unique_videos = [
+        url for url in pilot["url"].unique()
+        if url.rstrip("/").split("/")[-1] in video_files
+    ]
+    print(f"Found {len(unique_videos)} pilot URLs with downloaded video files")
+
+    # ── Resume: skip URLs already in df_final.csv ────────────────────────────
+    already_done = set()
+    if os.path.exists(out_path):
+        existing = pd.read_csv(out_path)
+        already_done = set(existing["url"].dropna().unique())
+        print(f"Resuming: {len(already_done)} URLs already processed, skipping them")
+
+    unique_videos = [u for u in unique_videos if u not in already_done]
+    print(f"Remaining: {len(unique_videos)} videos to process with {MAX_WORKERS} workers")
+
+    feature_rows = []
+    completed = 0
+    with ProcessPoolExecutor(max_workers=MAX_WORKERS) as pool:
+        futures = {
+            pool.submit(extract_features, url, video_files[url.rstrip("/").split("/")[-1]]): url
+            for url in unique_videos
+        }
+        for future in as_completed(futures):
+            url, features, error = future.result()
+            completed += 1
+            if features is not None:
+                feature_rows.append(features)
+                print(f"[{completed}/{len(unique_videos)}] Success: {url}")
+            else:
+                print(f"[{completed}/{len(unique_videos)}] Failed: {url}\n  {error}")
+
+    features_df = pd.DataFrame(feature_rows)
+
+    # Merge back with pilot event info
+    df_new = pilot.merge(features_df, on="url", how="left")
+
+    # Append to any existing results
+    if already_done:
+        existing = pd.read_csv(out_path)
+        df_final = pd.concat([existing, df_new], ignore_index=True)
+    else:
+        df_final = df_new
+
+    df_final.to_csv(out_path, index=False)
+    print(f"\nSaved {len(features_df)} new videos → section5.1/df_final.csv ({len(df_final)} total rows)")
+
+
+if __name__ == "__main__":
+    # Required for ProcessPoolExecutor on macOS (spawn start method) --
+    # without this guard, worker processes re-import and re-run this file.
+    main()

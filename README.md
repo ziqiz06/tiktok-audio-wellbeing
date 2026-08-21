@@ -20,17 +20,19 @@ This project investigates whether the **audio content** of TikTok videos watched
 
 ---
 
-## Findings (Pilot, N=150 bursts / 120 participants)
+## Findings (Provisional — N=150 bursts / 120 participants)
 
-The notebook is parameterized to evaluate one outcome at a time; the saved run below is for `happy`. Out-of-fold predictions via Leave-One-Group-Out CV (grouped by participant, 120 folds):
+> These numbers are from the **old 150-burst pilot**, re-run only to confirm the updated pipeline (PCA-reduced audio block, see "Sample-Size Planning" below) still works correctly — they are not the target-scale run. `power_analysis.py` shows 0% power at N=150 to detect even a small effect, so don't read anything into the ranking between B and C below; it will very likely change once the pipeline is actually re-run at the ~736–794-burst scale the data supports.
 
-| Model | Features | R² (OOF) | RMSE (OOF) |
+The notebook is parameterized to evaluate one outcome at a time; the run below is for `happy`. Out-of-fold predictions via Leave-One-Group-Out CV (grouped by participant, 120 folds):
+
+| Model | Features (post-PCA) | R² (OOF) | RMSE (OOF) |
 |-------|----------|----------|------------|
 | A: Behavioral | 42 | −0.133 | 29.81 |
-| B: Behavioral + handcrafted audio | 306 | −0.077 | 29.06 |
-| C: Behavioral + handcrafted audio + AST (PCA-30) | 336 | −0.079 | 29.08 |
+| B: Behavioral + handcrafted audio (PCA-10) | 52 | −0.074 | 29.02 |
+| C: Behavioral + handcrafted audio (PCA-10) + AST (PCA-30) | 82 | −0.101 | 29.39 |
 
-**Bottom line:** none of the three models beat a mean-outcome baseline (all R² < 0) at this pilot scale — expected with ~150 noisy bursts and 300+ correlated predictors. Adding handcrafted audio features modestly reduced RMSE relative to behavioral counts alone; the AST deep embeddings added no further improvement over handcrafted audio (B and C are effectively tied). Read this as "audio content is not yet ruled out as a predictor," not as a positive result — the other three outcomes haven't been run yet, and a larger sample is needed before drawing real conclusions.
+**Bottom line:** none of the three models beat a mean-outcome baseline (all R² < 0) — expected, given 0% power at this N. This table exists to prove the pipeline runs end-to-end after the audio-PCA change, not to draw a conclusion about whether audio content predicts well-being. That question needs the larger-N rerun described below.
 
 ---
 
@@ -39,7 +41,7 @@ The notebook is parameterized to evaluate one outcome at a time; the saved run b
 ```
 DDP logs (ddp_table_ema_120.csv, ddp_view_url_120.csv)   [not included, see data/README.md]
     │
-    ├─ pilot_sample.py          → pilot_sample_events.csv   (150 bursts, ≤5 URLs each)
+    ├─ pilot_sample.py          → pilot_sample_events.csv   (~736 bursts, full candidate pool, ≤5 URLs each)
     │
     ├─ download_videos.py       → videos/                   (yt-dlp download)
     │
@@ -63,7 +65,8 @@ DDP logs (ddp_table_ema_120.csv, ddp_view_url_120.csv)   [not included, see data
 
 | File | Description |
 |------|-------------|
-| `pilot_sample.py` | Samples 150 EMA bursts (one per participant first, then top-up), selects up to 5 TikTok URLs per burst. Anchors sampling on EMA file to guarantee join coverage. |
+| `pilot_sample.py` | Samples the full candidate pool of EMA bursts (~736 with ≥5 URLs, one per participant first then top-up), selects up to 5 TikTok URLs per burst. Anchors sampling on EMA file to guarantee join coverage. See "Sample-Size Planning" for why this isn't capped at an arbitrary smaller number anymore. |
+| `power_analysis.py` | Standalone script — computes the sample size needed to reliably detect audio/AST effects via Cohen's f² and the noncentral F-distribution. Run before investing in a full pipeline rerun. |
 | `download_videos.py` | Downloads sampled TikTok videos via `yt-dlp` into `videos/`. |
 | `section5.1/audio_feature_extraction.py` | Extracts handcrafted audio features per video using Librosa (MFCCs, chroma, spectral features, tempo, beat count, non-silence ratio). |
 | `embeddingvector.py` | Runs each video through a pretrained Audio Spectrogram Transformer (AudioSet-pretrained) and extracts a 768-dim embedding from the pre-classification layer. |
@@ -94,6 +97,8 @@ Extracted at 22,050 Hz. Frame-level features are summarized per video as **mean*
 | Beat Count | `beat_count` |
 | Non-Silence Ratio | `non_silence_ratio` |
 
+These per-video features are aggregated to the burst level (mean + std across sampled videos), then reduced with PCA (n=10) before modeling — see "Sample-Size Planning" below for why.
+
 See `section5.1/audio_feature.md` for full documentation.
 
 ### Deep Embeddings (AST)
@@ -106,19 +111,33 @@ The [Audio Spectrogram Transformer](https://github.com/YuanGongND/ast) (pretrain
 
 ## Models
 
-Three Ridge regression models are compared using Leave-One-Group-Out cross-validation, grouped by participant (N=150 bursts across 120 participants):
+Three Ridge regression models are compared using Leave-One-Group-Out cross-validation, grouped by participant:
 
-| Model | Features | Count |
+| Model | Features | Count (post-PCA) |
 |-------|----------|-------|
 | A | Behavioral (DDP counts) | 42 |
-| B | Behavioral + handcrafted audio | 306 |
-| C | Behavioral + handcrafted audio + AST (PCA-30) | 336 |
+| B | Behavioral + handcrafted audio (PCA-10) | 52 |
+| C | Behavioral + handcrafted audio (PCA-10) + AST (PCA-30) | 82 |
 
-Preprocessing: mean imputation → StandardScaler → RidgeCV (α ∈ {0.01, 0.1, 1, 10, 100, 1000}).
+Preprocessing: mean imputation → StandardScaler → PCA (audio and AST blocks only) → RidgeCV (α ∈ {0.01, 0.1, 1, 10, 100, 1000}).
 
-> **Note:** This is a pilot run (N=150 bursts, 120 participants). R² estimates have high variance at this sample size and should be treated as directional only — see "Findings" above.
+> **Note:** Both content blocks (handcrafted audio and AST) are PCA-reduced for the same reason — see "Sample-Size Planning" below. Behavioral features aren't reduced; there are few enough of them relative to N that it isn't needed.
 
 Result plots (`coefficients_model_A.png`, `coefficients_model_B.png`, `model_comparison.png`, `pca_explained_variance.png`, `predicted_vs_actual.png`) are aggregate model outputs and are included.
+
+---
+
+## Sample-Size Planning
+
+The original 150-burst pilot was underpowered to answer its own research questions: a power analysis (`power_analysis.py`, Cohen's f² for an R² increment via the noncentral F-distribution) shows **0% power at N=150** to detect even a small effect (f²=0.02) of audio features on top of behavioral counts — meaning a negative result at that scale can't be distinguished from "the pipeline just isn't powered to see it."
+
+Two independent levers came out of that analysis:
+1. **More data, without new recruitment:** the existing DDP export already contains ~736–794 usable EMA bursts (124 participants) — the 150-burst pilot only used ~19% of what's already collected. `pilot_sample.py` now samples the full available pool instead of an arbitrary 150.
+2. **PCA-reduce the handcrafted audio block**, the same treatment AST embeddings already got. Leaving it at 264 raw dimensions would need N≈3,579 for adequate power even after scaling up the burst count — reducing it to 10 components (matching the AST block's approach) brings that down to N≈875, within reach of the ~736–794 available bursts.
+
+Even with both changes, this only gets you to ~75% power for a *small* effect — full power is reached only for medium-or-larger effects. That's the honest ceiling given the data currently on hand; getting more DDP-donating participants would still improve it further.
+
+`power_analysis.py` is meant to be re-run whenever the candidate burst pool changes (e.g. if the lab collects more DDP data) — it's the way to check the target N before investing in another full pipeline rerun, rather than rerunning and hoping.
 
 ---
 
@@ -158,7 +177,11 @@ The AST model weights (AudioSet pretrained) must be placed in `third_party/ast/p
 ## Reproducing the Pipeline
 
 ```bash
-# 1. Sample pilot bursts
+# 0. (Optional but recommended) Check what sample size is actually worth
+#    targeting before investing in a full rerun
+python power_analysis.py
+
+# 1. Sample bursts (full candidate pool by default -- see Sample-Size Planning)
 python pilot_sample.py
 
 # 2. Download videos

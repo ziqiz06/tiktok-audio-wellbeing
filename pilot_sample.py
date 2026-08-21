@@ -47,8 +47,15 @@ print(f"\n  View bursts with >=1 URL      : {len(view_keys)}")
 print(f"  Of those, also in EMA file    : {len(candidate_bursts)}")
 print(f"  Unique PIDs in candidates     : {candidate_bursts['PID'].nunique()}")
 
-# ── STEP 2: Sample 150 bursts, spread across PIDs ────────────────────────────
-TARGET_BURSTS = 150
+# ── STEP 2: Sample bursts, spread across PIDs ─────────────────────────────────
+# TARGET_BURSTS is set to (comfortably above) the full candidate pool at the
+# current URLS_PER_BURST threshold, so the sampling logic below just takes
+# everything that qualifies rather than subsampling -- see power_analysis.py
+# for why: the 150-burst pilot was underpowered (0% power to detect even a
+# small effect), and this data already has ~736 qualifying bursts sitting
+# unused. Re-run pilot_sample.py if the underlying DDP export grows and you
+# want to confirm the pool size before relying on this constant.
+TARGET_BURSTS = 1000
 URLS_PER_BURST = 5
 
 # Prefer bursts with >=5 URLs

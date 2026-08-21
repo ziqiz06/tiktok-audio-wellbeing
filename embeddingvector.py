@@ -113,12 +113,36 @@ else:
     print("Single-video test passed. Running full loop...\n")
 
     # ── Loop over pilot sample videos ────────────────────────────────────────
+    # Resumable + checkpointed: for an unattended/overnight run, a crash partway
+    # through should lose at most CHECKPOINT_EVERY videos' work, not all of it.
+    CHECKPOINT_EVERY = 20
+    embeddings_path = os.path.join(_base_dir, "embeddings.csv")
+
     pilot = pd.read_csv(os.path.join(_base_dir, "pilot_sample_events.csv"))
     unique_urls = pilot["url"].dropna().unique()
-    results = []
 
-    for i, url in enumerate(unique_urls):
-        print(f"[{i+1}/{len(unique_urls)}] {url}")
+    already_done = set()
+    if os.path.exists(embeddings_path):
+        existing_df = pd.read_csv(embeddings_path)
+        already_done = set(existing_df["url"].dropna().unique())
+        print(f"Resuming: {len(already_done)} embeddings already saved, skipping them")
+    else:
+        existing_df = pd.DataFrame(columns=["url", "embedding"])
+
+    remaining_urls = [u for u in unique_urls if u not in already_done]
+    print(f"{len(remaining_urls)} of {len(unique_urls)} videos remaining\n")
+
+    def save_checkpoint(existing_df, new_results):
+        if not new_results:
+            return existing_df
+        combined = pd.concat([existing_df, pd.DataFrame(new_results)], ignore_index=True)
+        combined.to_csv(embeddings_path, index=False)
+        return combined
+
+    pending = []
+    n_failed = 0
+    for i, url in enumerate(remaining_urls):
+        print(f"[{i+1}/{len(remaining_urls)}] {url}")
         video_id = url.rstrip("/").split("/")[-1]
 
         matches = [f for f in os.listdir(videos_dir) if f.startswith(video_id) and not f.endswith(".wav")]
@@ -132,11 +156,16 @@ else:
         try:
             extract_audio(video_path, wav_path)
             emb = get_embedding(wav_path)
-            results.append({"url": url, "embedding": emb.numpy().tolist()})
+            pending.append({"url": url, "embedding": emb.numpy().tolist()})
             print(f"  OK — embedding shape: {emb.shape}")
         except Exception as e:
+            n_failed += 1
             print(f"  Failed: {e}")
 
-    results_df = pd.DataFrame(results)
-    results_df.to_csv(os.path.join(_base_dir, "embeddings.csv"), index=False)
-    print(f"\nSaved {len(results)} embeddings → embeddings.csv")
+        if len(pending) >= CHECKPOINT_EVERY:
+            existing_df = save_checkpoint(existing_df, pending)
+            print(f"  [checkpoint: {len(existing_df)} embeddings saved to embeddings.csv]")
+            pending = []
+
+    existing_df = save_checkpoint(existing_df, pending)
+    print(f"\nDone. {len(existing_df)} total embeddings saved, {n_failed} failed this run → embeddings.csv")

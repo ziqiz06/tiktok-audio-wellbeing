@@ -27,3 +27,8 @@ __pycache__/
 
 # macOS
 .DS_Store
+
+# Pipeline run logs/state -- not research output, regenerated each run
+logs/
+PIPELINE_STATUS.txt
+download_failures.csv

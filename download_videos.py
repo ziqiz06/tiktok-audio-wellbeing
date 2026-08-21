@@ -24,6 +24,7 @@ import argparse
 import csv
 import datetime
 import os
+import random
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -112,8 +113,15 @@ def main():
     print(f"{len(unique_urls)} unique URLs total, {skipped} already downloaded, {len(to_download)} remaining")
 
     if args.limit is not None:
-        to_download = to_download[:args.limit]
-        print(f"--limit {args.limit}: attempting {len(to_download)} of the new videos")
+        # Random sample, NOT the first N in file order: pilot_sample_events.csv
+        # groups ~5 consecutive rows per EMA burst, so a positional slice can
+        # accidentally land entirely within 1-2 bursts and be unrepresentative
+        # -- confirmed in practice: the first 10 in file order gave 0-1/10
+        # "succeeded" due to a genuinely unlucky cluster of unavailable videos
+        # in those specific bursts, while a random sample of 10 gave 10/10 on
+        # the same run, same network, same code.
+        to_download = random.sample(to_download, min(args.limit, len(to_download)))
+        print(f"--limit {args.limit}: attempting {len(to_download)} of the new videos (random sample)")
 
     if not to_download:
         print("Nothing to do.")

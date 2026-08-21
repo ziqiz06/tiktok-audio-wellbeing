@@ -130,6 +130,14 @@ def main():
     unique_videos = [u for u in unique_videos if u not in already_done]
     print(f"Remaining: {len(unique_videos)} videos to process with {MAX_WORKERS} workers")
 
+    if not unique_videos:
+        # Nothing new to do -- df_final.csv (if it exists) already has
+        # everything. Skip the merge/save below entirely: an empty
+        # feature_rows produces a columnless DataFrame, and merging that on
+        # "url" crashes with KeyError('url') rather than being a no-op.
+        print("Nothing new to process -- df_final.csv is already up to date.")
+        return
+
     feature_rows = []
     completed = 0
     with ProcessPoolExecutor(max_workers=MAX_WORKERS) as pool:

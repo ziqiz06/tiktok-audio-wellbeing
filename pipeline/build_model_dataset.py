@@ -18,11 +18,12 @@ import os
 import numpy as np
 import pandas as pd
 
-base = os.path.dirname(os.path.abspath(__file__))
+# All raw, derived, and downloaded data lives under <repo>/data/ (gitignored)
+base = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
 # ── Load inputs ───────────────────────────────────────────────────────────────
 events = pd.read_csv(os.path.join(base, "events_with_features.csv"))
-ema    = pd.read_csv(os.path.join(base, "data", "ddp_table_ema_120.csv"))
+ema    = pd.read_csv(os.path.join(base, "ddp_table_ema_120.csv"))
 
 print(f"events_with_features.csv : {events.shape}")
 print(f"ddp_table_ema_120.csv    : {ema.shape}")
@@ -131,12 +132,12 @@ for col in outcomes:
         print(f"  {col:30s}: column not found")
 
 # ── Funnel summary ────────────────────────────────────────────────────────────
-pilot      = pd.read_csv(os.path.join(base, "pilot_sample_events.csv"))
+pilot      = pd.read_csv(os.path.join(base, "sampled_events.csv"))
 emb_df     = pd.read_csv(os.path.join(base, "embeddings.csv"))
-craft_df   = pd.read_csv(os.path.join(base, "section5.1", "df_final.csv"))
+craft_df   = pd.read_csv(os.path.join(base, "audio_features.csv"))
 videos_dir = os.path.join(base, "videos")
 downloaded = [f for f in os.listdir(videos_dir) if not f.endswith(".wav")]
-ev_raw     = pd.read_csv(os.path.join(base, "data", "ddp_view_url_120.csv"))
+ev_raw     = pd.read_csv(os.path.join(base, "ddp_view_url_120.csv"))
 
 feat_col = ast_cols[0] if ast_cols else None
 rows_with_feat = events.dropna(subset=[feat_col]) if feat_col else events.iloc[0:0]

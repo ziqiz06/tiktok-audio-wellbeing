@@ -2,8 +2,9 @@ import sys
 import os
 
 # Add third_party/ast/src to the path (trimmed AST vendor copy, see third_party/ast/README.md)
-_base_dir = os.path.dirname(os.path.abspath(__file__))
-_ast_dir = os.path.join(_base_dir, "third_party", "ast")
+_root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_base_dir = os.path.join(_root_dir, "data")  # raw, derived, and downloaded data (gitignored)
+_ast_dir = os.path.join(_root_dir, "third_party", "ast")
 sys.path.insert(0, _ast_dir)
 
 from src.models import ASTModel
@@ -96,7 +97,7 @@ videos_dir = os.path.join(_base_dir, "videos")
 all_files = [f for f in os.listdir(videos_dir) if not f.endswith(".wav")]
 
 if not all_files:
-    print("No downloaded videos found. Run video_download/download_videos.py first.")
+    print("No downloaded videos found. Run pipeline/download_videos.py first.")
 else:
     test_file = all_files[0]
     test_video = os.path.join(videos_dir, test_file)
@@ -118,7 +119,7 @@ else:
     CHECKPOINT_EVERY = 20
     embeddings_path = os.path.join(_base_dir, "embeddings.csv")
 
-    pilot = pd.read_csv(os.path.join(_base_dir, "pilot_sample_events.csv"))
+    pilot = pd.read_csv(os.path.join(_base_dir, "sampled_events.csv"))
     unique_urls = pilot["url"].dropna().unique()
 
     already_done = set()

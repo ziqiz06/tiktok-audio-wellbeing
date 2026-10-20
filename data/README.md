@@ -2,7 +2,7 @@
 
 The raw Digital Data Donation (DDP) and EMA files this pipeline runs on are **not included in this repository** — they contain real study participants' identifiers, GPS coordinates, IP addresses, demographics, and mental-health baseline scores, and are restricted under the study's IRB protocol.
 
-This directory documents the two expected input files so the pipeline scripts (`pilot_sample.py`, `build_final_model_df.py`) are reproducible against equivalent data.
+All pipeline inputs and outputs live in this directory (gitignored). This README documents the two expected input files so the pipeline scripts (`pipeline/sample_bursts.py`, `pipeline/build_model_dataset.py`) are reproducible against equivalent data.
 
 ## `ddp_table_ema_120.csv`
 
@@ -29,6 +29,18 @@ Raw view-event log: one row per TikTok video viewed in a burst window.
 | `activity` | Event type, e.g. `view`, `like` |
 | `shared_content`, `shared_method`, `like_received_from_post` | Optional metadata, mostly null for `view` events |
 
-## Downstream files (also excluded, same reason)
+## Derived files (also excluded, same reason)
 
-`pilot_sample_events.csv`, `embeddings.csv`, `video_features.csv`, `events_with_features.csv`, `session_features.csv`, `final_model_df.csv`, and `section5.1/df_final.csv` are all derived from the two files above and carry the same participant-linkage restriction — see the root `README.md` "Data Files" table for what each one contains and the script that produces it.
+Every file below is derived from the two inputs above and carries the same participant-linkage restriction.
+
+| File | Produced by | Contents |
+|---|---|---|
+| `sampled_events.csv` | `pipeline/sample_bursts.py` | Sampled EMA bursts, ≤5 viewed-video URLs each |
+| `videos/` | `pipeline/download_videos.py` | Downloaded TikTok videos |
+| `download_failures.csv` | `pipeline/download_videos.py` | Append-only log of failed downloads (used to skip them on resume) |
+| `audio_features.csv` | `pipeline/extract_audio_features.py` | Librosa features per video |
+| `embeddings.csv` | `pipeline/extract_ast_embeddings.py` | 768-dim AST embedding per video |
+| `video_features.csv` | `pipeline/build_features.py` | Librosa + AST features joined per video URL |
+| `events_with_features.csv` | `pipeline/build_features.py` | Sampled events with video features attached |
+| `session_features.csv` | `pipeline/build_model_dataset.py` | Burst-level feature aggregates (mean + std across videos) |
+| `final_model_df.csv` | `pipeline/build_model_dataset.py` | Final modeling table (736 bursts × 2,055 columns) |

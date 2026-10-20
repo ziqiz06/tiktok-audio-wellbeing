@@ -17,9 +17,9 @@ import pandas as pd
 TIMEOUT_SECONDS = 60  # max time per video before skipping
 MAX_WORKERS = max(1, (os.cpu_count() or 4) - 1)
 
-base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+base = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 videos_dir = os.path.join(base, "videos")
-out_path = os.path.join(base, "section5.1", "df_final.csv")
+out_path = os.path.join(base, "audio_features.csv")
 
 
 class TimeoutError(Exception):
@@ -111,7 +111,7 @@ def main():
     }
 
     # Load pilot sample and filter to URLs that were actually downloaded
-    pilot = pd.read_csv(os.path.join(base, "pilot_sample_events.csv"))
+    pilot = pd.read_csv(os.path.join(base, "sampled_events.csv"))
     pilot = pilot.dropna(subset=["url"])
 
     unique_videos = [
@@ -120,7 +120,7 @@ def main():
     ]
     print(f"Found {len(unique_videos)} pilot URLs with downloaded video files")
 
-    # ── Resume: skip URLs already in df_final.csv ────────────────────────────
+    # ── Resume: skip URLs already in audio_features.csv ────────────────────────────
     already_done = set()
     if os.path.exists(out_path):
         existing = pd.read_csv(out_path)
@@ -131,11 +131,11 @@ def main():
     print(f"Remaining: {len(unique_videos)} videos to process with {MAX_WORKERS} workers")
 
     if not unique_videos:
-        # Nothing new to do -- df_final.csv (if it exists) already has
+        # Nothing new to do -- audio_features.csv (if it exists) already has
         # everything. Skip the merge/save below entirely: an empty
         # feature_rows produces a columnless DataFrame, and merging that on
         # "url" crashes with KeyError('url') rather than being a no-op.
-        print("Nothing new to process -- df_final.csv is already up to date.")
+        print("Nothing new to process -- audio_features.csv is already up to date.")
         return
 
     feature_rows = []
@@ -167,7 +167,7 @@ def main():
         df_final = df_new
 
     df_final.to_csv(out_path, index=False)
-    print(f"\nSaved {len(features_df)} new videos → section5.1/df_final.csv ({len(df_final)} total rows)")
+    print(f"\nSaved {len(features_df)} new videos → data/audio_features.csv ({len(df_final)} total rows)")
 
 
 if __name__ == "__main__":

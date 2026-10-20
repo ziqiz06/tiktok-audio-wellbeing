@@ -16,6 +16,7 @@ permutation_test.py, so a fix (like the outlier winsorizing added after a
 real bug at N=736) only needs to happen in one place.
 """
 import argparse
+import os
 import json
 import time
 import warnings
@@ -26,6 +27,8 @@ from sklearn.metrics import r2_score, root_mean_squared_error
 from sklearn.model_selection import LeaveOneGroupOut, cross_val_predict
 
 from modeling_utils import AUDIO_PCA, N_PCA, group_features, make_pipeline
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 OUTCOMES = ["happy", "smu_intention_pc", "smu_experience_happy", "life_satisfied"]
 
@@ -70,8 +73,8 @@ def run_for_target(df, target):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data", default="final_model_df.csv")
-    parser.add_argument("--out", default="ridge_results.json")
+    parser.add_argument("--data", default=os.path.join(ROOT, "data", "final_model_df.csv"))
+    parser.add_argument("--out", default=os.path.join(ROOT, "results", "ridge_results.json"))
     args = parser.parse_args()
 
     t0 = time.time()

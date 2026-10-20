@@ -10,7 +10,7 @@
 #     one line to PIPELINE_STATUS.txt -- check that file first when you wake
 #     up, it's the whole story in a few lines.
 #   - Every Python script in this chain (download_videos.py,
-#     audio_feature_extraction.py, embeddingvector.py) is independently
+#     extract_audio_features.py, extract_ast_embeddings.py) is independently
 #     checkpointed/resumable, so if this script (or your machine) dies
 #     partway through, re-running it picks up where it left off rather than
 #     starting over.
@@ -100,7 +100,7 @@ PREFLIGHT_N=25
 PREFLIGHT_MIN_OK=10
 echo "--- Pre-flight: testing download on $PREFLIGHT_N videos before committing to the full batch ---"
 preflight_log="logs/$(date +%Y%m%d_%H%M%S)_preflight_download.log"
-"$VENV_PYTHON" download_videos.py --limit "$PREFLIGHT_N" > "$preflight_log" 2>&1
+"$VENV_PYTHON" pipeline/download_videos.py --limit "$PREFLIGHT_N" > "$preflight_log" 2>&1
 preflight_ok=$(grep -oE '^Done\. [0-9]+ succeeded' "$preflight_log" | grep -oE '[0-9]+' || echo 0)
 
 if grep -q "^Nothing to do\.$" "$preflight_log"; then
@@ -138,17 +138,17 @@ else
 fi
 
 # ── Full pipeline ──────────────────────────────────────────────────────────
-run_step "download_videos"          "$VENV_PYTHON" download_videos.py || exit 1
-run_step "audio_feature_extraction" "$VENV_PYTHON" section5.1/audio_feature_extraction.py || exit 1
-run_step "embeddingvector"          "$VENV_PYTHON" embeddingvector.py || exit 1
-run_step "build_features"           "$VENV_PYTHON" build_features.py || exit 1
-run_step "build_final_model_df"     "$VENV_PYTHON" build_final_model_df.py || exit 1
-run_step "ridge_models"             "$VENV_PYTHON" run_ridge_models.py || exit 1
+run_step "download_videos"        "$VENV_PYTHON" pipeline/download_videos.py || exit 1
+run_step "extract_audio_features" "$VENV_PYTHON" pipeline/extract_audio_features.py || exit 1
+run_step "extract_ast_embeddings" "$VENV_PYTHON" pipeline/extract_ast_embeddings.py || exit 1
+run_step "build_features"         "$VENV_PYTHON" pipeline/build_features.py || exit 1
+run_step "build_model_dataset"    "$VENV_PYTHON" pipeline/build_model_dataset.py || exit 1
+run_step "ridge_models"           "$VENV_PYTHON" analysis/run_ridge_models.py || exit 1
 
 # Permutation test: conservative N_PERMUTATIONS for this first run at the new
 # scale -- see header comment. Only the primary outcome (happy) for now;
 # ridge_models already covers all four outcomes' R²/RMSE.
-run_step "permutation_test" "$VENV_PYTHON" permutation_test.py --target happy --comparison both --n-permutations 100
+run_step "permutation_test" "$VENV_PYTHON" analysis/permutation_test.py --target happy --comparison both --n-permutations 100
 
 echo "=== Pipeline run finished $(date -u +%Y-%m-%dT%H:%M:%SZ) ===" >> "$STATUS_FILE"
 echo ""

@@ -1,16 +1,11 @@
-# Participant / raw behavioral data — never commit (IRB/privacy restricted)
-data/*.csv
-pilot_sample_events.csv
-embeddings.csv
-video_features.csv
-events_with_features.csv
-session_features.csv
-final_model_df.csv
-section5.1/df_final.csv
-
-# Downloaded video/audio
-videos/
+# Participant / raw behavioral data -- never commit (IRB/privacy restricted).
+# Everything under data/ (raw DDP/EMA exports, derived CSVs, downloaded
+# videos) is ignored except the schema README.
+data/*
+!data/README.md
+*.csv
 *.wav
+*.mp4
 
 # Pretrained model weights
 third_party/ast/pretrained_models/*.pth
@@ -31,4 +26,3 @@ __pycache__/
 # Pipeline run logs/state -- not research output, regenerated each run
 logs/
 PIPELINE_STATUS.txt
-download_failures.csv

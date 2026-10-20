@@ -1,9 +1,9 @@
 """
-Downloads videos listed in pilot_sample_events.csv into the videos/ folder.
+Downloads videos listed in sampled_events.csv into data/videos/.
 
 Downloads run concurrently via a thread pool -- this is a network-bound step
 (waiting on TikTok's CDN), not a CPU-bound one, so threads are appropriate
-(unlike audio_feature_extraction.py, which is CPU-bound and uses processes).
+(unlike extract_audio_features.py, which is CPU-bound and uses processes).
 
 MAX_WORKERS is deliberately modest: too much concurrency against one platform
 risks tripping rate limiting/blocks, which would make this slower and less
@@ -18,7 +18,7 @@ without re-parsing stdout.
 
 Use --limit N to cap how many NEW (not-yet-downloaded) videos are attempted
 this run -- e.g. a smoke test on real new data before committing to the
-full batch: `python download_videos.py --limit 30`.
+full batch: `python pipeline/download_videos.py --limit 30`.
 """
 import argparse
 import csv
@@ -52,7 +52,8 @@ except Exception as e:
 
 MAX_WORKERS = 6
 
-base       = os.path.dirname(os.path.abspath(__file__))
+# All raw, derived, and downloaded data lives under <repo>/data/ (gitignored)
+base       = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 videos_dir = os.path.join(base, "videos")
 failures_path = os.path.join(base, "download_failures.csv")
 os.makedirs(videos_dir, exist_ok=True)
@@ -123,7 +124,7 @@ def main():
                          help="Also retry URLs that failed in a previous run (skipped by default).")
     args = parser.parse_args()
 
-    pilot = pd.read_csv(os.path.join(base, "pilot_sample_events.csv"))
+    pilot = pd.read_csv(os.path.join(base, "sampled_events.csv"))
     unique_urls = list(pilot["url"].dropna().unique())
 
     done_ids = already_downloaded_ids(videos_dir)
@@ -143,7 +144,7 @@ def main():
           f"{len(to_download)} remaining")
 
     if args.limit is not None:
-        # Random sample, NOT the first N in file order: pilot_sample_events.csv
+        # Random sample, NOT the first N in file order: sampled_events.csv
         # groups ~5 consecutive rows per EMA burst, so a positional slice can
         # accidentally land entirely within 1-2 bursts and be unrepresentative
         # -- confirmed in practice: the first 10 in file order gave 0-1/10

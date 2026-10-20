@@ -38,6 +38,7 @@ p-value granularity is limited to 1/N_PERMUTATIONS, so don't run so few
 permutations that you can't distinguish e.g. p=0.01 from p=0.05.
 """
 import argparse
+import os
 import warnings
 
 import numpy as np
@@ -46,6 +47,8 @@ from sklearn.metrics import r2_score
 from sklearn.model_selection import LeaveOneGroupOut, cross_val_predict
 
 from modeling_utils import AUDIO_PCA, N_PCA, group_features, make_pipeline
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def fit_oof_r2(pipe, X, y, groups):
@@ -142,7 +145,7 @@ def main():
     parser.add_argument("--n-permutations", type=int, default=200,
                          help="More = finer p-value resolution but longer runtime. "
                               "Start small to gauge per-permutation time at your current N.")
-    parser.add_argument("--data", default="final_model_df.csv")
+    parser.add_argument("--data", default=os.path.join(ROOT, "data", "final_model_df.csv"))
     args = parser.parse_args()
 
     df = pd.read_csv(args.data)

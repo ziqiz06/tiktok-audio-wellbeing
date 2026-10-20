@@ -1,0 +1,23 @@
+# Versions the published results were produced with (Python 3.13, macOS / Apple Silicon).
+# Also requires a system ffmpeg install (used by pipeline/extract_ast_embeddings.py).
+
+# Data + modeling
+numpy==2.4.4
+pandas==3.0.2
+scipy==1.17.1
+scikit-learn==1.8.0
+matplotlib==3.10.8
+
+# Audio features
+librosa==0.11.0
+soundfile==0.13.1
+
+# AST embeddings (third_party/ast)
+torch==2.11.0
+torchaudio==2.11.0
+timm==0.4.5
+wget==3.2
+
+# Video download -- curl_cffi is required, not optional (see README)
+yt-dlp==2026.8.19
+curl_cffi==0.16.1

@@ -1,6 +1,6 @@
 """
 Step 1 & 2: Sample at the EMA-burst level, maximize participant diversity.
-Produces pilot_sample_events.csv.
+Produces sampled_events.csv.
 
 IMPORTANT: Sample from EMA bursts first (ddp_table_ema_120.csv), then pull
 matching view events. This guarantees every sampled burst has an EMA row to
@@ -11,11 +11,12 @@ import os
 import numpy as np
 import pandas as pd
 
-base = os.path.dirname(os.path.abspath(__file__))
+# All raw, derived, and downloaded data lives under <repo>/data/ (gitignored)
+base = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
 # ── Load ──────────────────────────────────────────────────────────────────────
-ev  = pd.read_csv(os.path.join(base, "data", "ddp_view_url_120.csv"))
-ema = pd.read_csv(os.path.join(base, "data", "ddp_table_ema_120.csv"))
+ev  = pd.read_csv(os.path.join(base, "ddp_view_url_120.csv"))
+ema = pd.read_csv(os.path.join(base, "ddp_table_ema_120.csv"))
 
 # Normalize join keys
 for df in (ev, ema):
@@ -53,7 +54,7 @@ print(f"  Unique PIDs in candidates     : {candidate_bursts['PID'].nunique()}")
 # everything that qualifies rather than subsampling -- see power_analysis.py
 # for why: the 150-burst pilot was underpowered (0% power to detect even a
 # small effect), and this data already has ~736 qualifying bursts sitting
-# unused. Re-run pilot_sample.py if the underlying DDP export grows and you
+# unused. Re-run sample_bursts.py if the underlying DDP export grows and you
 # want to confirm the pool size before relying on this constant.
 TARGET_BURSTS = 1000
 URLS_PER_BURST = 5
@@ -110,6 +111,6 @@ for pid in sorted(pilot['PID'].unique()):
     print(f"  {pid}  →  {n} URLs")
 
 # ── Save ──────────────────────────────────────────────────────────────────────
-out = os.path.join(base, "pilot_sample_events.csv")
+out = os.path.join(base, "sampled_events.csv")
 pilot.to_csv(out, index=False)
-print(f"\nSaved → pilot_sample_events.csv  ({pilot.shape})")
+print(f"\nSaved → sampled_events.csv  ({pilot.shape})")

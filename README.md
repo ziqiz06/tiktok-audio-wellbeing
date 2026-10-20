@@ -4,6 +4,8 @@ An end-to-end ML pipeline testing whether the **audio content** of TikTok videos
 
 It links donated TikTok activity logs from **120 study participants** to the **~2,300 videos** they watched. It then extracts handcrafted signal-processing features (Librosa) and deep embeddings from a pretrained **Audio Spectrogram Transformer**, and compares nested Ridge models under participant-grouped cross-validation.
 
+This work is part of a broader Harvard PhD research project on which features of short-form video content shape viewers' emotional and psychological states. Within that effort, this project's role is to test one candidate factor, audio, and rule it in or out, narrowing the search for what actually matters. All participant data is confidential and not included in this repository.
+
 **Python · PyTorch · scikit-learn · Librosa · Audio Spectrogram Transformer · yt-dlp · pandas**
 
 > **Result:** a well-powered **null finding**. Neither handcrafted audio nor deep AST embeddings add predictive signal for momentary well-being over behavioral counts (permutation test p = 0.92 and p = 0.42). Planning the sample size up front is what makes this a conclusive negative rather than an inconclusive one.
